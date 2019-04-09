@@ -763,11 +763,18 @@ read.juncs = function(rafile,
                 return(GRangesList());
             }
 
-            if (any(w.0 <- (width(vgr)<1))){
-                warning("Some breakpoint width==0.")
+            ## if (any(w.n <- (width(vgr)<0))){
+            ##     warning("Some breakpoint width is negative.")
+            ##     ## right bound smaller coor
+            ##     ## and there's no negative width GR allowed
+            ##     vgr[which(w.n)] = gr.start(vgr[which(w.n)])
+            ## }
+            
+            if (any(w.0 <- (width(vgr)==0))){
+                warning("Some breakpoint width is 0.")
                 ## right bound smaller coor
                 ## and there's no negative width GR allowed
-                vgr[which(w.0)] = gr.start(vgr[which(w.0)]) %-% 1
+                start(vgr[which(w.0)]) = end(vgr[which(w.0)])
             }
 
             ## BND format doesn't have duplicated rownames

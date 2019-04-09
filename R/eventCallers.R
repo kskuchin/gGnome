@@ -173,10 +173,16 @@ proximity = function(gg,
   ## mark the node pair with minimum ALT distance for each qid and sid pair
   ## (there could be multiple chunks for each query and subjec and
   ## multiple haplotypes for complex graph with bubbles)  
-  dt.alt[, is.min := 1:.N %in% which.min(val), by = .(qid, sid)]
-  dt.alt = dt.alt[is.min == TRUE, ]
-  dt.ref[, is.min := 1:.N %in% which.min(val), by = .(qid, sid)]
-  dt.ref = dt.ref[is.min == TRUE, ]  
+
+    ## dt.alt[, is.min := 1:.N %in% which.min(val), by = .(qid, sid)]
+    dt.alt[, is.min := rep(1:.N %in% which.min(val), length.out = .N), by = .(qid, sid)]
+    
+    dt.alt = dt.alt[is.min == TRUE, ]
+
+    ## dt.ref[, is.min := 1:.N %in% which.min(val), by = .(qid, sid)]
+    dt.ref[, is.min := rep(1:.N %in% which.min(val), .N), by = .(qid, sid)]
+    
+    dt.ref = dt.ref[is.min == TRUE, ]  
 
   setnames(dt.alt, 'val', 'altdist')
   setnames(dt.ref, 'val', 'refdist')
