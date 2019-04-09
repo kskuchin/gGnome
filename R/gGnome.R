@@ -955,12 +955,24 @@ gEdge = R6::R6Class("gEdge",
                             args = list(...)
                             
                             if (any(names(args) %in% NONO.FIELDS)){
-                              stop(paste('Cannot modify the following reserved gEdge metadata fields:', paste(NONO.FIELDS, collapse = ', ')))
+                                stop(paste(
+                                    'Cannot modify the following reserved gEdge metadata fields:',
+                                    paste(NONO.FIELDS, collapse = ', ')))
                             }
-                            
                             for (nm in names(args)){
-                              private$pgraph$annotate(nm, args[[nm]],
-                                                      c(private$psedge.id, -private$psedge.id), "edge")
+                                if (length(args[[nm]]) != length(private$psedge.id)){
+                                    if (length(args[[nm]]))
+                                        warning("The given value for ", nm, " is length ",
+                                                length(args[[nm]]),
+                                            " different from the number of edges ",
+                                            length(private$psedge.id),
+                                            ". Recycling.")
+                                    args[[nm]] = rep(args[[nm]], length.out = length(private$psedge.id))
+                                }
+                                private$pgraph$annotate(
+                                    nm, rep(args[[nm]], 2),
+                                    c(private$psedge.id, -private$psedge.id),
+                                    "edge")
                             }
                           }
                       },
