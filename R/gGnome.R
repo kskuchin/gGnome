@@ -376,7 +376,18 @@ gNode = R6::R6Class("gNode",
                         return(private$pgraph)
                       },
 
-
+                      #' @name footprint
+                      #' @description
+                      #' 
+                      #' Returns the reduced genomic footprint of this object
+                      #' 
+                      #' @return GRanges of footprint of this object
+                      footprint = function()
+                      {
+                        self$check
+                        return(sort(reduce(self$gr)))
+                      },
+                      
                       #' @name dt
                       #' @description
                       #'
@@ -509,6 +520,8 @@ gNode = R6::R6Class("gNode",
                       eleft = function()
                       {
                         self$check
+                        if (nrow(private$pgraph$sedgesdt)==0)
+                          return(gEdge$new(graph = private$pgraph))
                         sedge.id = private$pgraph$sedgesdt[to %in% private$pindex, sedge.id]
                         return(gEdge$new(sedge.id, graph = private$pgraph))
                       },
@@ -524,6 +537,8 @@ gNode = R6::R6Class("gNode",
                       eright = function()
                       {
                         self$check
+                        if (nrow(private$pgraph$sedgesdt)==0)
+                          return(gEdge$new(graph = private$pgraph))
                         sedge.id = private$pgraph$sedgesdt[from %in% private$pindex, sedge.id]
                         return(gEdge$new(sedge.id, graph = private$pgraph))
                       },
@@ -1102,6 +1117,19 @@ gEdge = R6::R6Class("gEdge",
                         return(length(private$pedge.id))
                       },
 
+                      #' @name footprint
+                      #' @description
+                      #' 
+                      #' Returns the reduced genomic footprint of this object
+                      #' 
+                      #' @return GRanges of footprint of this object
+                      footprint = function()
+                      {
+                        self$check
+                        return(sort(reduce(gr.stripstrand(unlist(self$grl)))))
+                      },
+
+                      
                       #' @name span
                       #' @description
                       #' 
@@ -1186,7 +1214,13 @@ gEdge = R6::R6Class("gEdge",
                       sdt = function()
                       {
                         self$check
-                        return(copy(private$pedges))
+                        out = copy(private$pedges)
+                        if (nrow(out))
+                          {
+                            out$n1 = self$graph$dt$snode.id[out$from]
+                            out$n2 = self$graph$dt$snode.id[out$to]
+                          }
+                        return(out)
                       },
 
 
@@ -1646,6 +1680,19 @@ Junction = R6::R6Class("Junction",
                          length = function()
                          {                               
                            return(length(private$pjuncs))
+                         },
+
+
+                         #' @name footprint
+                         #' @description
+                         #' 
+                         #' Returns the reduced genomic footprint of this object
+                         #' 
+                         #' @return GRanges of footprint of this object
+                         footprint = function()
+                         {
+                           self$check
+                           return(sort(reduce(gr.stripstrand(unlist(self$grl)))))
                          },
 
                          copy = function() self$clone(),
@@ -2490,8 +2537,12 @@ gGraph = R6::R6Class("gGraph",
                          if (length(self)==0) 
                            return(invisible(self))
 
+                         if (length(self$edges)==0)
+                           return(invisible(self))
+
                          edges = copy(self$edgesdt)
                          nodes = self$nodes$gr
+
                          ## let's figure out reference adjacent dnode pairs
                          nodes.dt = gr2dt(nodes)[, c("node.id", "seqnames", "start", "end", by), with = FALSE]
                          nodes.dt[, endnext := end +1]
@@ -2631,7 +2682,6 @@ gGraph = R6::R6Class("gGraph",
 
                          private$gGraphFromNodes(dt2gr(new.nodes, seqlengths = seqlengths(nodes)), new.edges)
                          return(invisible(self))
-
                        },
 
                        #' @name reduce
@@ -2798,6 +2848,9 @@ gGraph = R6::R6Class("gGraph",
                        {
                          filtered = FALSE
                          graph = self$copy
+                         if (length(graph)==0)
+                           return(invisible(self))
+
                          graph$nodes$mark(og.node.id = 1:length(graph))   
                          if (deparse(substitute(i)) != "NULL"
                              | deparse(substitute(j)) != "NULL")
@@ -2841,6 +2894,9 @@ gGraph = R6::R6Class("gGraph",
 
                          ## rename clusters so most popular is first
                          rename = data.table(names(rev(sort(table(c(pmembership, rmembership))))))[, structure(1:.N, names = V1)]
+
+                         ## rename again so that positive clusters are first
+                         names(rename) = names(rename)[order(!(names(rename) %in% as.character(pmembership)))]
 
                          pmembership = rename[as.character(pmembership)]
                          rmembership = rename[as.character(rmembership)]
@@ -4982,10 +5038,10 @@ gGraph = R6::R6Class("gGraph",
                            edges[, jid := 1:.N]
 
                            ## remove reserved fields or else we mess up merge below
-                           if (!is.null(edges$from))
+                           if (!is.null(edges[['from']]))
                              edges$from = NULL
 
-                           if (!is.null(edges$to))
+                           if (!is.null(edges[['to']]))
                              edges$to = NULL
 
                            ## See if there is a cn in the edges, in which case we should carry it over
@@ -5181,6 +5237,10 @@ gGraph = R6::R6Class("gGraph",
                        ## the edge weights of this igraph will be populated by the width of the target interval
                        igraph = function()
                        {
+
+                         if (length(self$gr)==0)
+                           return(igraph::graph_from_adjacency_matrix(sparseMatrix(1,1, x = 0)))
+
                          v = as.data.frame(
                            values(self$gr)[, c('index', 'node.id', 'snode.id')])
 
@@ -5569,8 +5629,13 @@ gG = function(genome = NULL,
       nodes = obj$nodes[i, with = with]
     }
     nids = c(nodes$dt$index, nodes$flip$dt$index);
-    eid = nodes$edges$sdt[to %in% nids & from %in% nids, sedge.id]
-    edges = obj$edges[eid, with = with]
+    if (length(nids) && length(nodes$edges))
+    {
+      eid = nodes$edges$sdt[to %in% nids & from %in% nids, sedge.id]
+      edges = obj$edges[eid, with = with]
+      }
+    else
+      edges = obj$edges[c()]
   }
 
   return(gGraph$new(nodeObj = nodes, edgeObj = edges, meta = obj$meta))
@@ -5919,14 +5984,18 @@ gWalk = R6::R6Class("gWalk", ## GWALKS
                           private$gWalkFromEdges(sedge.id = sedge.id,
                                          graph = graph,
                                          circular = circular,
+                                         drop = drop,
                                          meta = meta)
                         }
 
                         if (nrow(private$pmeta)>0)
                           {
                             setkey(private$pmeta, walk.id)
-                            setkey(private$pnode, walk.id)                             
-                            setkey(private$pedge, walk.id)
+                            if (nrow(private$pnode))
+                              setkey(private$pnode, walk.id)
+
+                            if (nrow(private$pedge))
+                              setkey(private$pedge, walk.id)
                           }
 
                         if (!is.null(dgraph)) ## in this case both grl and graph were provided, so now we will try to reconcile
@@ -5947,21 +6016,25 @@ gWalk = R6::R6Class("gWalk", ## GWALKS
                         }
 
                         ## fill in remaining metadata
-                        if (self$length>0)
+                        if (self$length>0 && nrow(private$pnode))
                         {
                           tmp = private$pnode[, .(walk.id, snode.id)]                   
                           tmp$wid = width(self$graph$nodes$gr)[abs(tmp$snode.id)]
                           if (!is.null(walk.names))
                             private$pmeta$name = walk.names[private$pmeta$walk.id]
-                          private$pmeta$wid = tmp[, .(wid = sum(as.numeric(wid))), keyby = walk.id][.(private$pmeta$walk.id), wid]
+                          private$pmeta$wid = tmp[, .(wid = sum(as.numeric(wid), na.rm = TRUE)), keyby = walk.id][.(private$pmeta$walk.id), wid]
 
                           ## we need to fix factors if drop == TRUE and there are missing walk.ids
                           if (drop == TRUE & any(private$pmeta$walk.id>self$length)){
                             lev = private$pmeta$walk.id
                             private$pmeta[, walk.id := as.integer(factor(as.character(walk.id), lev))]
                             private$pnode[, walk.id := as.integer(factor(as.character(walk.id), lev))]
-                            setkey(private$pnode, walk.id)
-                            setkey(private$pmeta, walk.id)
+                            if (nrow(private$pnode))
+                              setkey(private$pnode, walk.id)
+
+                            if (nrow(private$pmeta))
+                              setkey(private$pmeta, walk.id)
+
                             if (nrow(private$pedge)>0)
                             {
                               private$pedge[, walk.id := as.integer(factor(as.character(walk.id), lev))]
@@ -6062,8 +6135,12 @@ gWalk = R6::R6Class("gWalk", ## GWALKS
                         private$pnode = new.node[,-2]                                             
                         private$pmeta = new.meta[, -2]
 
-                        setkey(private$pnode, walk.id)
-                        setkey(private$pmeta, walk.id)
+                        if (nrow(private$pnode))
+                          setkey(private$pnode, walk.id)
+
+                        if (nrow(private$pmeta))
+                          setkey(private$pmeta, walk.id)
+
                         if (nrow(new.edge)>0)
                           {
                             setkey(private$pedge, walk.id)
@@ -6075,11 +6152,26 @@ gWalk = R6::R6Class("gWalk", ## GWALKS
                       dts = function(ix = 1:self$length, makelists = TRUE)
                       {
                         self$check
+                        if (self$length==0)
+                          return(data.table())
+
+                        ix = ix[ix %in% 1:self$length]
                         out = private$pmeta[.(ix), ]
                         if (makelists == FALSE) ## just return raw pmeta subset 
                           return(out)
-                        node.sum = private$pnode[.(ix), .(snode.id = list(c(snode.id))), keyby = walk.id][.(ix),][, -1]
+
+                        node.sum = data.table(
+                          snode.id = rep(list(),self$length),
+                          walk.id = private$pmeta$walk.id,
+                          key = 'walk.id')
+
+                        if (nrow(private$pnode))
+                        {
+                          ix2 = ix[ix %in% private$pnode$walk.id]
+                          node.sum = private$pnode[.(ix2), .(snode.id = list(c(snode.id))), keyby = walk.id][.(ix),][, -1]
+                        }                        
                         out = cbind(out, node.sum)
+                          
                         if (nrow(private$pedge)>0)
                           out = cbind(out, private$pedge[.(ix), .(sedge.id = list(c(sedge.id))), keyby = walk.id][.(ix),][, -1])
                         return(out)
@@ -6143,14 +6235,27 @@ gWalk = R6::R6Class("gWalk", ## GWALKS
                         if (self$length>0)
                         {
                           ix = 1:min(self$length, TOOBIG)
-                          tmp.node = private$pnode[.(ix), .(walk.id, snode.id)]
-                          tmp.node[, nix := private$pgraph$queryLookup(snode.id)$index]
-
-                          setkey(tmp.node, walk.id)
                           cols = setdiff(colnames(private$pmeta), c('snode.id', 'sedge.id'))
-                          out = cbind(self$dts(ix)[ , cols, with = FALSE],
-                                      tmp.node[.(ix), .(gr = .tease(gr.string(private$pgraph$gr[nix], mb = FALSE))), keyby = walk.id][.(ix),][, -1])
- 
+                          out = self$dts(ix)[ , cols, with = FALSE]
+                          if (nrow(private$pnode))
+                          {
+                            tmp.node = private$pnode[.(ix), .(walk.id, snode.id)]
+                            tmp.node[, nix := private$pgraph$queryLookup(snode.id)$index]
+                            setkey(tmp.node, walk.id)
+                            
+                            teaser = tmp.node[.(ix),
+                                              .(gr =
+                                                  {
+                                                    if (any(is.na(nix)))
+                                                      ''
+                                                    else
+                                                      .tease(gr.string(private$pgraph$gr[nix],
+                                                                       mb = FALSE))
+                                                  }
+                                                ), keyby = walk.id][.(ix),][, -1]                        
+                            out = cbind(out, teaser)
+                          }
+
                           print(out)
                           if (self$length>TOOBIG)
                           {
@@ -6278,9 +6383,15 @@ gWalk = R6::R6Class("gWalk", ## GWALKS
                           circular = private$pmeta$circular)
 
                         private$ptimestamp = private$pgraph$timestamp
-                        setkey(private$pnode, walk.id)
-                        setkey(private$pedge, walk.id)
-                        setkey(private$pmeta, walk.id)
+
+                        if (nrow(private$pnode))
+                          setkey(private$pnode, walk.id)
+
+                        if (nrow(private$pedge))
+                          setkey(private$pedge, walk.id)
+
+                        if (nrow(private$pmeta))
+                          setkey(private$pmeta, walk.id)
 
                         return(invisible(self))
                       },
@@ -6333,9 +6444,14 @@ gWalk = R6::R6Class("gWalk", ## GWALKS
                                   graph = newgraph,
                                   meta = private$pmeta)
 
-                        setkey(private$pnode, walk.id)
-                        setkey(private$pedge, walk.id)
-                        setkey(private$pmeta, walk.id)
+                        if (nrow(private$pnode))
+                          setkey(private$pnode, walk.id)
+
+                        if (nrow(private$pedge))
+                          setkey(private$pedge, walk.id)
+
+                        if (nrow(private$pmeta))
+                          setkey(private$pmeta, walk.id)
 
                         private$ptimestamp = private$pgraph$timestamp
                         return(invisible(self))
@@ -6612,11 +6728,13 @@ gWalk = R6::R6Class("gWalk", ## GWALKS
                                               drop = FALSE ## logical flag specifying whether to drop provided walks traversing non-existent edges
                                               )  ## logical vector specifying which contigs are circular, i.e. have an implied edge from the final node to the first
                       {
+                        pnode.empty = as.data.table(list(walk.id = c(), snode.id = c()))
+                        pedge.empty = as.data.table(list(walk.id = c(), sedge.id = c()))
 
                         if (length(snode.id)==0)
                         {
-                          private$pnode = data.table()
-                          private$pedge = data.table()
+                          private$pnode = pnode.empty
+                          private$pedge = pedge.empty
                           private$pmeta = data.table()
                           private$pgraph = graph
                           return()
@@ -6646,7 +6764,7 @@ gWalk = R6::R6Class("gWalk", ## GWALKS
                         if (is.null(names(snode.id)))
                           names(snode.id) = seq_along(snode.id)
 
-                        private$pmeta = data.table(walk.id = seq_along(snode.id), name = names(snode.id), length = elementNROWS(snode.id), wid = NA, 
+                        private$pmeta = data.table(walk.id = seq_along(snode.id), name = names(snode.id), length = elementNROWS(snode.id), wid = 0, 
                                                    circular = circular)
                         
                         if (!is.null(meta))
@@ -6666,7 +6784,17 @@ gWalk = R6::R6Class("gWalk", ## GWALKS
                         }
 
                         ## always faster to unlist than lapply
-                        pnode = dunlist(unname(snode.id))[, .(walk.id = listid, snode.id = V1)]
+                        tmp = dunlist(unname(snode.id))
+
+                        if (nrow(tmp)==0)
+                        {
+                          private$pnode = pnode.empty
+                          private$pedge = pedge.empty
+                          private$pgraph = graph
+                          return()
+                        }
+
+                        pnode = tmp[, .(walk.id = listid, snode.id = V1)]
                         
                         ## first need to check if the edges corresponding to the consecutive
                         ## node pairs in the input lists exist
@@ -6730,12 +6858,16 @@ gWalk = R6::R6Class("gWalk", ## GWALKS
                       gWalkFromEdges = function(sedge.id,
                                               graph = NULL,
                                               meta = NULL, ## metadata with one row per walk, can include every metadata field except for $circular, $walk.id
+                                              drop = FALSE, 
                                               circular = NULL)  ## logical vector specifying which contigs are circular, i.e. have an implied edge from the final node to the first                                            
                       {
+                        pnode.empty = as.data.table(list(walk.id = c(), snode.id = c()))
+                        pedge.empty = as.data.table(list(walk.id = c(), sedge.id = c()))
+
                         if (length(sedge.id)==0)
                         {
-                          private$pnode = data.table()
-                          private$pedge = data.table()
+                          private$pnode = pnode.empty
+                          private$pedge = pedge.empty
                           private$pmeta = data.table()
                           private$pgraph = graph
                           return()
@@ -6751,7 +6883,7 @@ gWalk = R6::R6Class("gWalk", ## GWALKS
                         }
                         
                         
-                        private$pmeta = data.table(walk.id = seq_along(sedge.id), name = names(sedge.id), length = elementNROWS(sedge.id), wid = NA,
+                        private$pmeta = data.table(walk.id = seq_along(sedge.id), name = names(sedge.id), length = elementNROWS(sedge.id), wid = 0,
                                                    circular = circular)
 
                         if (!is.null(meta)) ## need this for some reason to get rid of pass by reference stickiness (doesn't work higher in call stack)
@@ -6762,7 +6894,7 @@ gWalk = R6::R6Class("gWalk", ## GWALKS
                           
                           if (nrow(meta) != length(sedge.id))
                           {
-                            stop('data.table of meta.data must be same length and order as node, edge, or GRangesList list input')
+                            stop('data.table of meta data must be same length and order as node, edge, or GRangesList list input')
                           }
 
                           GW.NONO = c('walk.id', 'circular', 'snode.id', 'sedge.id', 'wid', 'length', 'name', 'query.id', 'subject.id', 'i')
@@ -6776,7 +6908,17 @@ gWalk = R6::R6Class("gWalk", ## GWALKS
                           }
                         
                         
-                        pedge = dunlist(unname(sedge.id))[, .(walk.id = listid, sedge.id = V1)]
+                        tmp = dunlist(unname(sedge.id))
+                        if (nrow(tmp)==0)
+                        {
+                          private$pnode = pnode.empty
+                          private$pedge = pedge.empty
+                          private$pgraph = graph
+                          return()
+                        }
+
+                        pedge = tmp[, .(walk.id = listid, sedge.id = V1)]
+
                         tmpe = graph$sedgesdt[.(pedge$sedge.id), .(from, to)]
 
                         if (any(is.na(tmpe$to))){
@@ -6793,16 +6935,18 @@ gWalk = R6::R6Class("gWalk", ## GWALKS
                         }
                         pedge[, to := graph$dt$snode.id[to]]
                         pedge[, from := graph$dt$snode.id[from]]
-
-
+                        
                         pnode = pedge[, .(snode.id = c(from, to[.N])), by = walk.id]
-                        private$pedge = pedge[, .(walk.id, sedge.id, to, from)]
 
-                        pnode[, walk.iid := 1:.N, by = walk.id]
-                        pedge[, walk.iid := 1:.N, by = walk.id]
-                        private$pnode = pnode
-                        private$pgraph = graph
-                        private$ptimestamp = private$pgraph$timestamp
+                        snode.id = split(pnode$snode.id, pnode$walk.id)
+
+                        ## run everything through gWalkFromNodes to make sure compatible
+                        private$gWalkFromNodes(snode.id = snode.id,
+                                               graph = graph,
+                                               circular = circular,
+                                               drop = drop, 
+                                               private$pmeta
+                                               )
                       }
                     ),
                     active = list(
@@ -6855,9 +6999,19 @@ gWalk = R6::R6Class("gWalk", ## GWALKS
                         self$check
                         if (self$length==0)
                           return(list())
-                        ix = 1:self$length
-                        tmp = private$pnode[.(ix), .(snode.id = list(c(snode.id))), keyby = walk.id][.(ix),snode.id]
-                        return(tmp)
+
+                        node.sum = data.table(
+                          snode.id = rep(list(),self$length),
+                          walk.id = private$pmeta$walk.id,
+                          key = 'walk.id')
+                        
+                        if (nrow(private$pnode))
+                        {
+                          ix = unique(private$pnode$walk.id)
+                          node.sum = private$pnode[.(ix), .(snode.id = list(c(snode.id))), keyby = walk.id][.(ix),][, -1]
+                        }                        
+
+                        return(node.sum$snode.id)
                       },
 
                       sedge.id = function()
@@ -6865,9 +7019,20 @@ gWalk = R6::R6Class("gWalk", ## GWALKS
                         self$check
                         if (self$length==0)
                           return(list())
-                        ix = 1:self$length
-                        tmp = private$pedge[.(ix), .(sedge.id = list(c(sedge.id))), keyby = walk.id][.(ix),sedge.id]
-                        return(tmp)
+
+
+                        edge.sum = data.table(
+                          sedge.id = rep(list(),self$length),
+                          walk.id = private$pmeta$walk.id,
+                          key = 'walk.id')
+                        
+                        if (nrow(private$pedge))
+                        {
+                          ix = unique(private$pedge$walk.id)
+                          edge.sum = private$pedge[.(ix), .(sedge.id = list(c(sedge.id))), keyby = walk.id][.(ix),][, -1]
+                        }                        
+
+                        return(edge.sum$sedge.id)
                       },
 
                       copy = function() self$clone(),
@@ -7705,7 +7870,7 @@ setMethod("width", c("gNode"),
 #' @export
 setMethod("refresh", "gWalk",
           function(x) {
-              return(gWalk$new(snode.id = x$dts()$snode.id,
+              return(gWalk$new(snode.id = x$snode.id,
                                meta = x$meta,
                                graph = x$graph))
           })
