@@ -4075,7 +4075,7 @@ gGraph = R6::R6Class("gGraph",
                          nstring = ifelse(do.nodes,
                                           sprintf('%s %s this.val', nfield, comparator),
                                           '')
-                         cmd = sprintf("graph[%s,%s]", estring, nstring)
+                         cmd = sprintf("graph[%s,%s]", nstring, estring)
 
 
                          ## copy self and label og nodes 

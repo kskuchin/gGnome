@@ -414,29 +414,28 @@ wv2gg = function(weaver, simplify = TRUE)
     stop('Error: Need "SV_CN_PHASE" and "REGION_CN_PHASE".')
   }
   
-
-  
   region = data.table(read.delim(
-    paste(weaver, "REGION_CN_PHASE", sep="/"),
-    header = FALSE, sep = "\t"))
+      paste(weaver, "REGION_CN_PHASE", sep="/"),
+      header = FALSE, sep = "\t"))
   
   sv.fn = paste(weaver, "SV_CN_PHASE", sep="/")
   if (file.size(sv.fn)>0){
-    sv = data.table(read.delim(sv.fn, header = FALSE, sep = "\t"))
-    names(sv) = c("chr1", "pos1", "side1", "allele1",
-                  "chr2", "pos2", "side2", "allele2",
-                  "cn", "unknown1", "unknown2", "timing", "class")[1:ncol(sv)]
+      ## sv = data.table(read.delim(sv.fn, header = FALSE, sep = "\t"))
+      sv = data.table::fread(sv.fn, fill=TRUE, sep = "\t")
+      names(sv) = c("chr1", "pos1", "side1", "allele1",
+                    "chr2", "pos2", "side2", "allele2",
+                    "cn", "unknown1", "unknown2", "timing", "class")[seq_len(ncol(sv))]
   }
   else {
-    sv = NULL
+      sv = NULL
   }
   
   ## define the columns
-  names(region) = c("seqnames", "start", "end", "acn", "bcn")
+  colnames(region) = c("seqnames", "start", "end", "acn", "bcn")
   region[, cn := acn + bcn]
   ## names(snp) = c("seqnames", "pos", "ref", "alt", "acn", "bcn")
-  region$start = region$start+1 ## start coordinates appear to be 0 centric
-  region$end = region$end+2 ## end coordinates appear to be "left-centric"
+  ## region$start = region$start+1 ## start coordinates appear to be 0 centric
+  ## region$end = region$end+2 ## end coordinates appear to be "left-centric"
   ss = dt2gr(region)
   ss = gr.fix(ss)
   
@@ -447,41 +446,59 @@ wv2gg = function(weaver, simplify = TRUE)
   ## sv.select = sv[!is.na(allele1) & !is.na(allele2)]
   junc = NULL
   if (!is.null(sv)){
-    sv = sv[which(allele1 !=0 & allele2 !=0), ]
-    if (simplify)
+      sv = sv[which(allele1 !=0 & allele2 !=0), ]
+      if (simplify)
       {
-        sv = sv[cn>0, ]
+          sv = sv[cn>0, ]
       }
 
-    if (nrow(sv)>0)
+      if (nrow(sv)>0)
       {
-        bps = grbind(
-          dt2gr(
-            sv[, .(seqnames = chr1,
-                   start = ifelse(side1=="-", pos1+1, pos1+2),
-                   end = ifelse(side1=="-", pos1+1, pos1+2),
-                   jix=.I, ii = 1,
-                   strand = strmap[side1])], seqlengths = seqlengths(ss)),
-          dt2gr(
-            sv[, .(seqnames = chr2,
-                   start = ifelse(side2=="-", pos2+1, pos2+2),
-                   end = ifelse(side2=="-", pos2+1, pos2+2),
-                   jix=.I, ii = 2,
-                   strand = strmap[side2])], seqlengths = seqlengths(ss))
-        )
-        ## ALERT: nudge 1bp offset for only the "-" bp
 
-        ## sanity check, all raw.bp at this point should
-        ## locate at left/right boundary of segements
-        ss.ends = c(gr.start(ss), gr.end(ss))
-        if (any(!bps %^% ss.ends)){
-          warning("Eligible SVs not matching segment ends!")
-        }
+          ## bps = grbind(
+          ##   dt2gr(
+          ##     sv[, .(seqnames = chr1,
+          ##            start = ifelse(side1=="-", pos1, pos1-1),
+          ##            end = ifelse(side1=="-", pos1, pos1-1),
+          ##            jix=.I, ii = 1,
+          ##            strand = strmap[side1])], seqlengths = seqlengths(ss)),
+          ##   dt2gr(
+          ##     sv[, .(seqnames = chr2,
+          ##            start = ifelse(side2=="-", pos2, pos2-1),
+          ##            end = ifelse(side2=="-", pos2, pos2-1),
+          ##            jix=.I, ii = 2,
+          ##            strand = strmap[side2])], seqlengths = seqlengths(ss))
+          ## )
 
-        ## create junctions
-        junc = grl.pivot(split(bps, bps$ii))
-        toget = intersect(c("allele1", "allele2", "cn", "unknown1", "unknown2", "timing", "class"), colnames(sv))
-        values(junc) = sv[, toget, with=F]
+          bps = grbind(
+              dt2gr(
+                  sv[, .(seqnames = chr1,
+                         start = pos1,
+                         end = pos1,
+                         jix=.I, ii = 1,
+                         strand = strmap[side1])],
+                  seqlengths = seqlengths(ss)),
+              dt2gr(
+                  sv[, .(seqnames = chr2,
+                         start = pos2,
+                         end = pos2,
+                         jix=.I, ii = 2,
+                         strand = strmap[side2])],
+                  seqlengths = seqlengths(ss))
+          )
+
+
+          ## sanity check, all raw.bp at this point should
+          ## locate at left/right boundary of segements
+          ss.ends = c(gr.start(ss), gr.end(ss))
+          if (any(!bps %^% ss.ends)){
+              warning("Eligible SVs not matching segment ends!")
+          }
+
+          ## create junctions
+          junc = grl.pivot(split(bps, bps$ii))
+          toget = intersect(c("allele1", "allele2", "cn", "unknown1", "unknown2", "timing", "class"), colnames(sv))
+          values(junc) = sv[, toget, with=F]
       }
   }
 
