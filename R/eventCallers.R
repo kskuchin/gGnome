@@ -180,7 +180,7 @@ proximity = function(gg,
     dt.alt = dt.alt[is.min == TRUE, ]
 
     ## dt.ref[, is.min := 1:.N %in% which.min(val), by = .(qid, sid)]
-    dt.ref[, is.min := rep(1:.N %in% which.min(val), .N), by = .(qid, sid)]
+    dt.ref[, is.min := rep(1:.N %in% which.min(val), length.out = .N), by = .(qid, sid)]
     
     dt.ref = dt.ref[is.min == TRUE, ]  
 
