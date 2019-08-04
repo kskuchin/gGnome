@@ -1328,11 +1328,3 @@ j.dist = function(j1, j2 = NULL){
              j = seq_along(j2))))[i<j]
     ij[, ":="(i1)]
 }
-
-#' @name jab2json
-#' @description a wrapper function to dump JaBbA results run with Flow to gGnome.js viz
-#' @export
-jab2json = function(fn = "./jabba.simple.rds",
-                    gGnome.js.dir = "~/git/gGnome.js"){
-
-}

@@ -1,4 +1,3 @@
-
 #' @name breakgraph
 #' @title breakgraph
 #'
@@ -159,12 +158,12 @@ breakgraph = function(breaks = NULL,
 
     ## Remove junctions that aren't in the genome selected
     ## this will have n1 or n2 NA
-    inew.edges = new.edges[!(is.na(n1) | is.na(n2)), ]
+    new.edges = new.edges[!(is.na(n1) | is.na(n2)), ]
 
     ## reconcile new.edges with metadata
     if (!is.null(juncsGR))
       if (ncol(values(juncs$grl))>0)
-        new.edges = cbind(new.edges, as.data.table(values(juncs$grl)[new.edges$grl.ix, ]))
+        new.edges = cbind(new.edges, as.data.table(values(juncs$grl)[new.edges$grl.ix, , drop = FALSE]))
       
       edges = rbind(edges, new.edges, fill = TRUE)
   }
@@ -312,6 +311,7 @@ pr2gg = function(fn, simplify = TRUE)
 jab2gg = function(jabba)
 {
   ## Validate our input
+
   if (is.list(jabba)) {
     if (!all(is.element(c("segstats", "adj",
                           "purity", "ploidy"),
@@ -325,12 +325,18 @@ jab2gg = function(jabba)
       stop("JaBbA file not found")
     }
   }
-  else if  (is(jabba, 'gGraph'))
+  else if (inherits(jabba, 'gGraph'))
   {
     return(list(nodes = jabba$nodes$gr, edges = jabba$edges$dt))
   }
   else {
     stop("Error loading jabba object from provided .rds path or object: please check input")
+  }
+
+  ## second round check .. just in case .rds file had gGraph object inside it
+  if (inherits(jabba, 'gGraph'))
+  {
+    return(list(nodes = jabba$nodes$gr, edges = jabba$edges$dt))
   }
 
   snodes = jabba$segstats %Q% (loose == FALSE)
@@ -434,6 +440,9 @@ wv2gg = function(weaver, simplify = TRUE)
   colnames(region) = c("seqnames", "start", "end", "acn", "bcn")
   region[, cn := acn + bcn]
   ## names(snp) = c("seqnames", "pos", "ref", "alt", "acn", "bcn")
+
+  ## Xiaotong remove this on Apr 23
+  ## don't need to do anything to the segment locations
   ## region$start = region$start+1 ## start coordinates appear to be 0 centric
   ## region$end = region$end+2 ## end coordinates appear to be "left-centric"
   ss = dt2gr(region)
@@ -454,7 +463,6 @@ wv2gg = function(weaver, simplify = TRUE)
 
       if (nrow(sv)>0)
       {
-
           ## bps = grbind(
           ##   dt2gr(
           ##     sv[, .(seqnames = chr1,
@@ -759,11 +767,6 @@ read.juncs = function(rafile,
                 if (is.null(rafile)){
                     rafile = tryCatch(fread(ra.path, header = FALSE, skip = nh, sep = '\t'), error = function(e) NULL)
                 }
-
-                if (is.null(rafile)){
-                    rafile = tryCatch(fread(ra.path, header = FALSE, skip = nh, sep = ','), error = function(e) NULL)
-                }
-
                 if (is.null(rafile)){
                     stop('Error reading bedpe')
                 }
@@ -796,7 +799,7 @@ read.juncs = function(rafile,
                 warning("Some breakpoint width is 0.")
                 ## right bound smaller coor
                 ## and there's no negative width GR allowed
-                start(vgr[which(w.0)]) = end(vgr[which(w.0)])
+                vgr[which(w.0)] = GenomicRanges::shift(gr.start(vgr[which(w.0)]), -1)
             }
 
             ## BND format doesn't have duplicated rownames
@@ -1255,8 +1258,16 @@ read.juncs = function(rafile,
         out = seg2gr(seg, seqlengths = seqlengths)[, c('ra.index', 'ra.which')];
         out = split(out, out$ra.index)
     } else if (!is.null(rafile$start1) & !is.null(rafile$start2) & !is.null(rafile$end1) & !is.null(rafile$end2)){
-        ra1 = gr.flipstrand(GRanges(rafile$chr1, IRanges(rafile$start1, rafile$end1), strand = rafile$str1))
-        ra2 = gr.flipstrand(GRanges(rafile$chr2, IRanges(rafile$start2, rafile$end2), strand = rafile$str2))
+        ra1 = gr.flipstrand(GRanges(
+            rafile$chr1,
+            IRanges(rafile$start1, rafile$end1),
+            strand = rafile$str1,
+            seqlengths = seqlengths))
+        ra2 = gr.flipstrand(GRanges(
+            rafile$chr2,
+            IRanges(rafile$start2, rafile$end2),
+            strand = rafile$str2,
+            seqlengths = seqlengths))
         out = grl.pivot(GRangesList(ra1, ra2))
     }
 
