@@ -2152,7 +2152,7 @@ gGraph = R6::R6Class("gGraph",
                            }
                            else if(!is.null(breaks) || !is.null(juncs))
                            {                                                           
-                               ne = breakgraph(breaks, juncs)
+                               ne = breakgraph(breaks, juncs, genome)
                            }
                            else if(!is.null(prego))
                            {
