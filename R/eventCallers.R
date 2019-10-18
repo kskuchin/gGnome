@@ -1817,8 +1817,8 @@ chromothripsis = function(gg,
                  ), keyby = cluster]
 
   candidates = cl.stats[nseg >= min.seg &
-                        cn.amplitude <=
-                        max.cn.amplitude & cn.max <= max.cn, ]
+                        cn.amplitude <= max.cn.amplitude &
+                        cn.max <= max.cn, ]
 
   if (nrow(candidates)==0)
       return(gg.empty)
@@ -2017,7 +2017,7 @@ chromothripsis = function(gg,
 #' @export
 #' @rdname internal
 #' @description
-#' Call simple events in gGraph
+#' Call simple events (inversion, inverted duplication, and translocation) in gGraph
 #'
 #' @param gg gGraph, must have 'cn' node and edge annotation
 #' @param min.foldbacks minimal number of foldbacks that makes a bfb
@@ -2038,7 +2038,7 @@ simple = function(gg,
     stop('gg must be gGraph')
   
   gg = gGnome::refresh(gg)
-  gg$nodes$mark(simple = NULL) ## 
+  gg$nodes$mark(simple = NULL) ## overwrite
   gg$edges$mark(simple = NULL) ##
   gg.empty = gg$copy
   gg.empty$set(simple = data.table())
@@ -2052,7 +2052,7 @@ simple = function(gg,
   
   if (!is.element("cn", colnames(gg$nodes$dt)))
   {
-    stop('nodes and edges must have $cn annotation for bfb function')
+    stop('nodes and edges must have $cn annotation for `simple` function')
   }
   
   if (!any(gg$edges$dt[, type=="ALT"])){
@@ -2070,11 +2070,13 @@ simple = function(gg,
   alt.shadows$ncn.right = alt[alt.shadows$id]$right$dt$cn
   sum.shadows = gr.sum(alt.shadows) %Q% (score>0)
   simple.inv = GRanges(seqinfo = seqinfo(gg))
+  ## INV filter1: left ncn==right ncn
   inv.shadows = alt.shadows %Q% (class == 'INV-like') %Q% (ncn.left == ncn.right)
   inv.shadows$str2 = inv.shadows$str = strand(alt[inv.shadows$id]$junctions$left)
   inv.shadows$id2 = inv.shadows$id
   if (length(inv.shadows))
     {
+      ## INV filter2: overlapping inv shadows, of the same JCN, and balanced NCN
       ov = inv.shadows[, c('id', 'str')] %*% inv.shadows[, c('id2', 'str2')] %Q%
         (id != id2 & str != str2 &
          start(inv.shadows)[query.id]<=start(inv.shadows)[subject.id] & 
@@ -2100,7 +2102,7 @@ simple = function(gg,
       if (length(simple.inv))
       {
         simple.inv$inv.frac = ifelse(simple.inv$type == 'INV', simple.inv$inv.width/width(simple.inv), 1-simple.inv$inv.width/width(simple.inv))
-        simple.inv$score = gr2dt(simple.inv %*% alt.shadows)[, .(ov = length(setdiff(id, c(id1, id2)))), keyby = 'query.id'][.(1:length(simple.inv)),ov ]
+        simple.inv$score = gr2dt(simple.inv %*% alt.shadows)[, .(ov = length(setdiff(id, c(id1, id2)))), keyby = 'query.id'][.(1:length(simple.inv)), ov]
         simple.inv = simple.inv %Q% (score==0)
       }
     }
@@ -2252,7 +2254,7 @@ del = function(gg,
   ## collect some stats simply for record keeping 
   candidates$depth = gr.val(candidates, foci, val = 'score', FUN = max, weighted = FALSE)$score
   candidates$min.cn = gr.val(candidates, gg$nodes$gr, val = 'cn', FUN = min, weighted = FALSE)$cn
-  candidates$max.cn = gr.val(candidates, gg$nodes$gr, val = 'cn', FUN = max, weighted = FALSE)$cn  
+  candidates$gr.val(candidates, gg$nodes$gr, val = 'cn', FUN = max, weighted = FALSE)$cn  
   candidates$del.count = (candidates %N% unlist(dels$grl))/2
   candidates$other.count = (candidates %N% unlist(other$grl))/2
   candidates$del.frac = candidates$del.count/(candidates$del.count + candidates$other.count)
